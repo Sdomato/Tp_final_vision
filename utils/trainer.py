@@ -3,13 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 from pathlib import Path
-
-# si está disponible, importa ssim
-try:
-    from pytorch_msssim import ssim
-except ImportError:
-    ssim = None
-    print("⚠️ Advertencia: pytorch-msssim no está instalado. SSIM/Combined no estarán disponibles.")
+from pytorch_msssim import ssim
 
 def trainer(
     model,
