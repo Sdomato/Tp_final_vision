@@ -2,8 +2,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-import time
 from pathlib import Path
+
+# si está disponible, importa ssim
+try:
+    from pytorch_msssim import ssim
+except ImportError:
+    ssim = None
+    print("⚠️ Advertencia: pytorch-msssim no está instalado. SSIM/Combined no estarán disponibles.")
 
 def trainer(
     model,
@@ -11,65 +17,81 @@ def trainer(
     val_loader,
     epochs=10,
     lr=1e-3,
-    criterion=None,
+    criterion="l1",   # puede ser "l1", "ssim", "combined" o función personalizada
     device=None,
     save_path="checkpoints",
     save_name="model_color.pt"
 ):
     """
-    Entrena un modelo de colorización dado un dataloader de entrenamiento y validación.
-
-    Parámetros:
-    ------------
-    model : nn.Module
-        Modelo a entrenar (por ej. FastColorNet o UNetColor)
-    train_loader : DataLoader
-        Dataloader con datos de entrenamiento (L -> ab)
-    val_loader : DataLoader
-        Dataloader con datos de validación
-    epochs : int
-        Número de épocas de entrenamiento
-    lr : float
-        Tasa de aprendizaje
-    criterion : función de pérdida (por defecto usa L1Loss)
-    device : torch.device (opcional)
-        Si no se pasa, detecta automáticamente CPU o GPU
-    save_path : str
-        Carpeta donde guardar el modelo entrenado
-    save_name : str
-        Nombre del archivo del modelo
+    Entrena un modelo de colorización con soporte para distintos criterios.
     """
 
     # --- Configuración de dispositivo ---
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    # --- Criterio y optimizador ---
-    criterion = criterion or nn.L1Loss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # --- Función auxiliar para obtener el criterio ---
+    def get_criterion(name):
+        if callable(name):  # si ya es función
+            return name
 
+        if isinstance(name, str):
+            name = name.lower()
+        else:
+            raise TypeError(f"❌ Tipo de criterio inválido: {type(name)}. Usa 'l1', 'ssim', 'combined' o una función.")
+
+        if name == "l1":
+            return nn.L1Loss()
+
+        elif name == "ssim":
+            if ssim is None:
+                raise ImportError("Para usar SSIM necesitás instalar pytorch-msssim (`pip install pytorch-msssim`).")
+            def ssim_loss(pred, target):
+                return 1 - ssim(pred, target, data_range=1.0, size_average=True)
+            return ssim_loss
+
+        elif name == "combined":
+            if ssim is None:
+                raise ImportError("Para usar Combined necesitás pytorch-msssim (`pip install pytorch-msssim`).")
+            l1 = nn.L1Loss()
+            def combined_loss(pred, target):
+                return 0.85 * l1(pred, target) + 0.15 * (1 - ssim(pred, target, data_range=1.0, size_average=True))
+            return combined_loss
+
+        else:
+            raise ValueError(f"❌ Criterio '{name}' no reconocido. Usa 'l1', 'ssim', 'combined' o una función.")
+
+    # Obtener la función de pérdida real
+    criterion_fn = get_criterion(criterion)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     Path(save_path).mkdir(parents=True, exist_ok=True)
 
     best_val_loss = float("inf")
 
     print(f"Entrenando en: {device}")
-    print(f"Usando pérdida: {criterion.__class__.__name__}")
+    print(f"Usando criterio: {criterion if isinstance(criterion, str) else 'custom function'}")
     print("=" * 50)
+
+    scaler = torch.cuda.amp.GradScaler(enabled=(device.type == "cuda"))
 
     # --- Loop de entrenamiento ---
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
-
         pbar = tqdm(train_loader, desc=f"Época {epoch}/{epochs}")
-        for L, ab in pbar:
-            L, ab = L.to(device), ab.to(device)
 
+        for L, ab in pbar:
+            L, ab = L.to(device, non_blocking=True), ab.to(device, non_blocking=True)
             optimizer.zero_grad()
-            out = model(L)
-            loss = criterion(out, ab)
-            loss.backward()
-            optimizer.step()
+
+            with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
+                out = model(L)
+                loss = criterion_fn(out, ab)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item()
             pbar.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -81,9 +103,9 @@ def trainer(
         val_loss = 0.0
         with torch.no_grad():
             for L, ab in val_loader:
-                L, ab = L.to(device), ab.to(device)
+                L, ab = L.to(device, non_blocking=True), ab.to(device, non_blocking=True)
                 out = model(L)
-                val_loss += criterion(out, ab).item()
+                val_loss += criterion_fn(out, ab).item()
 
         val_loss /= len(val_loader)
         print(f"Época {epoch:02d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
