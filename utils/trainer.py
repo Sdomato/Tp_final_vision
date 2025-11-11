@@ -4,6 +4,7 @@ import torch.optim as optim
 from tqdm import tqdm
 from pathlib import Path
 from pytorch_msssim import ssim
+from lpips import LPIPS
 
 def trainer(
     model,
@@ -51,6 +52,23 @@ def trainer(
             def combined_loss(pred, target):
                 return 0.85 * l1(pred, target) + 0.15 * (1 - ssim(pred, target, data_range=1.0, size_average=True))
             return combined_loss
+        
+        elif name == "perceptual":
+            if LPIPS is None:
+                raise ImportError("Para usar LPIPS necesitás instalar lpips (`pip install lpips`).")
+            l1 = nn.L1Loss()
+            lpips_fn = LPIPS(net='alex').to(device)
+            lpips_fn.freeze() 
+
+            def perceptual_loss(pred, target):
+                pred_norm = pred * 2.0 - 1.0
+                target_norm = target * 2.0 - 1.0
+                l1_val = l1(pred, target)
+                lpips_val = lpips_fn(pred_norm, target_norm).mean() 
+                return 0.85 * l1_val + 0.15 * lpips_val
+            
+            return perceptual_loss
+
 
         else:
             raise ValueError(f"❌ Criterio '{name}' no reconocido. Usa 'l1', 'ssim', 'combined' o una función.")
