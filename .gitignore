@@ -1,0 +1,18 @@
+# Entorno virtual de Python
+.venv/
+venv/
+
+# Carpetas de Cache de Python
+__pycache__/
+*.pyc
+
+
+# Carpetas temporales de Google Drive 
+.tmp.driveupload/
+.tmp.drivedownload/
+
+# Archivos del sistema operativo (Mac)
+.DS_Store
+
+# Archivos de configuración de VS Code
+.vscode/
