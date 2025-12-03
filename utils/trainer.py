@@ -4,6 +4,8 @@ import torch.optim as optim
 from tqdm import tqdm
 from pathlib import Path
 from pytorch_msssim import ssim
+from utils.histogram_loss import ColorStatsLoss
+
 
 
 
@@ -53,9 +55,17 @@ def trainer(
             def combined_loss(pred, target):
                 return 0.85 * l1(pred, target) + 0.15 * (1 - ssim(pred, target, data_range=1.0, size_average=True))
             return combined_loss
+        
+        elif name == "histogram":
+            l1_loss = nn.L1Loss()
+            stats_loss = ColorStatsLoss().to(device) 
 
-
-
+            def combined_loss(pred, target):
+                loss_content = l1_loss(pred, target)
+                loss_hist = stats_loss(pred, target)
+                return 0.8 * loss_content + 0.2 * loss_hist # proporcion recomendada
+            
+            return combined_loss
         else:
             raise ValueError(f"❌ Criterio '{name}' no reconocido. Usa 'l1', 'ssim', 'combined' o una función.")
 
