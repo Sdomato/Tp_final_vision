@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from skimage import color
+import matplotlib.pyplot as plt 
 
 # ============================================================
 # Histograma en espacio [-1,1]
@@ -72,3 +73,46 @@ def lab_to_rgb_from_norm(L, ab):
         rgbs.append(rgb)
 
     return np.stack(rgbs, axis=0)
+
+
+
+
+def show_colorization(model, dataloader, device="cuda"):
+    model.eval()
+    L, ab = next(iter(dataloader))  # toma un batch
+    L, ab = L.to(device), ab.to(device)
+
+    with torch.no_grad():
+        logits_a, logits_b = model(L)
+        pred_ab = logits_to_ab(logits_a, logits_b)
+
+    # convertir a RGB (numpy)
+    pred_rgb = lab_to_rgb_from_norm(L.cpu(), pred_ab.cpu())  # (B,H,W,3)
+    gt_rgb   = lab_to_rgb_from_norm(L.cpu(), ab.cpu())       # (B,H,W,3)
+    L_np = L.squeeze(1).cpu().numpy()  # (B,H,W)
+
+    # mostrar primeros 4
+    n = min(4, L_np.shape[0])
+    plt.figure(figsize=(12, 9))
+
+    for i in range(n):
+        # Grayscale
+        plt.subplot(n, 3, 3*i+1)
+        plt.imshow(L_np[i], cmap="gray")
+        plt.title("L (gris)")
+        plt.axis("off")
+
+        # Predicho
+        plt.subplot(n, 3, 3*i+2)
+        plt.imshow(pred_rgb[i])
+        plt.title("Predicción")
+        plt.axis("off")
+
+        # Truth
+        plt.subplot(n, 3, 3*i+3)
+        plt.imshow(gt_rgb[i])
+        plt.title("Ground Truth")
+        plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
