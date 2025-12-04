@@ -7,8 +7,6 @@ from pytorch_msssim import ssim
 from utils.histogram_loss import ColorStatsLoss
 
 
-
-
 def trainer(
     model,
     train_loader,
@@ -22,6 +20,10 @@ def trainer(
 ):
     """
     Entrena un modelo de colorización con soporte para distintos criterios.
+
+    Devuelve:
+        history: dict con listas de 'train_loss' y 'val_loss' por época,
+                 y 'best_val_loss'.
     """
 
     # --- Configuración de dispositivo ---
@@ -63,7 +65,7 @@ def trainer(
             def combined_loss(pred, target):
                 loss_content = l1_loss(pred, target)
                 loss_hist = stats_loss(pred, target)
-                return 0.8 * loss_content + 0.2 * loss_hist # proporcion recomendada
+                return 0.8 * loss_content + 0.2 * loss_hist # proporción recomendada
             
             return combined_loss
         else:
@@ -76,6 +78,10 @@ def trainer(
     Path(save_path).mkdir(parents=True, exist_ok=True)
 
     best_val_loss = float("inf")
+
+    # >>> listas para guardar la historia de pérdidas
+    train_history = []
+    val_history = []
 
     print(f"Entrenando en: {device}")
     print(f"Usando criterio: {criterion if isinstance(criterion, str) else 'custom function'}")
@@ -118,6 +124,10 @@ def trainer(
         val_loss /= len(val_loader)
         print(f"Época {epoch:02d} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
+        # >>> guardar en la historia
+        train_history.append(train_loss)
+        val_history.append(val_loss)
+
         # --- Guardar mejor modelo ---
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -127,3 +137,31 @@ def trainer(
     print("=" * 50)
     print("Entrenamiento finalizado.")
     print(f"Mejor Val Loss: {best_val_loss:.4f}")
+
+    # >>> devolver historia para hacer gráficos
+    history = {
+        "train_loss": train_history,
+        "val_loss": val_history,
+        "best_val_loss": best_val_loss,
+    }
+    return history
+
+"""
+from utils.trainer import trainer   # o como lo importes
+
+history_unet_l1 = trainer(
+    model,
+    train_loader,
+    val_loader,
+    epochs=20,
+    lr=1e-3,
+    criterion="l1",
+    save_path="pesos_entrenados",
+    save_name="unet_l1.pt"
+)
+
+# Opcional: guardar la historia para cargarla después sin re-entrenar
+import torch
+torch.save(history_unet_l1, "loss_vs_epoch/history_unet_l1.pt")
+
+"""
