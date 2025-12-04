@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. Función para Graficar (La que te pasé antes) ---
+
 def plot_ab_distribution(real_ab, pred_ab_viejo, pred_ab_nuevo):
     # Tomamos 2000 píxeles al azar para que el gráfico sea rápido y legible
     if len(real_ab.flatten()) > 0:
@@ -38,6 +38,72 @@ def plot_ab_distribution(real_ab, pred_ab_viejo, pred_ab_nuevo):
         axes[i].grid(True, alpha=0.3)
 
     plt.tight_layout()
+    plt.show()
+
+def plot_saturation_hist(loader, models_list, labels_list, device):
+    """
+    loader: El val_loader
+    models_list: Lista de modelos [modelo_viejo, modelo_nuevo, etc]
+    labels_list: Lista de nombres ["Base", "SSIM", etc]
+    """
+    
+    # 1. Preparamos las listas vacías
+    sat_real = []
+    # Creamos una lista de listas vacías, una para cada modelo
+    sat_preds = [[] for _ in models_list] 
+
+    # Ponemos todos los modelos en modo evaluación
+    for m in models_list:
+        m.eval()
+
+    print(f"Calculando saturación para {len(models_list)} modelos...")
+
+    with torch.no_grad():
+        # Usamos 10 batches para tener una buena curva suave
+        for i, (L, ab_real) in enumerate(loader):
+            if i >= 10: break 
+            
+            L = L.to(device)
+            ab_real = ab_real.to(device)
+
+            # A. Calcular Saturación Real (Ground Truth)
+            # Saturación = sqrt(a^2 + b^2)
+            sat_r = torch.sqrt(ab_real[:, 0]**2 + ab_real[:, 1]**2)
+            sat_real.extend(sat_r.flatten().cpu().numpy())
+
+            # B. Calcular Saturación de cada Modelo en la lista
+            for idx, model in enumerate(models_list):
+                pred = model(L)
+                sat_p = torch.sqrt(pred[:, 0]**2 + pred[:, 1]**2)
+                # Guardamos en la lista correspondiente a ese modelo
+                sat_preds[idx].extend(sat_p.flatten().cpu().numpy())
+
+    # 2. Graficar
+    plt.figure(figsize=(10, 6))
+    bins = 60
+    alpha = 0.3
+
+    # Graficar Realidad
+    plt.hist(sat_real, bins=bins, alpha=alpha, color='green', label='Realidad (GT)', density=True, histtype='stepfilled')
+    plt.hist(sat_real, bins=bins, alpha=1.0, color='green', density=True, histtype='step', linewidth=1.5) # Borde
+
+    # Colores para los modelos
+    colors = ['red', 'blue', 'purple', 'orange']
+
+    # Graficar cada modelo de la lista
+    for i, sat_data in enumerate(sat_preds):
+        color = colors[i % len(colors)] # Ciclar colores si hay muchos
+        label = labels_list[i]
+        
+        plt.hist(sat_data, bins=bins, alpha=alpha, color=color, label=label, density=True, histtype='stepfilled')
+        plt.hist(sat_data, bins=bins, alpha=1.0, color=color, density=True, histtype='step', linewidth=1.5) # Borde
+
+    plt.title("Comparación de Viveza del Color (Saturación)", fontsize=14)
+    plt.xlabel("Nivel de Saturación (0 = Gris, 1 = Color Puro)", fontsize=12)
+    plt.ylabel("Densidad de Píxeles", fontsize=12)
+    plt.legend(fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.xlim(0, 1.0)
     plt.show()
 
 # --- 2. Función para Extraer los Datos ---
