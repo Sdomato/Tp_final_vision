@@ -49,6 +49,12 @@ def trainer(
             def ssim_loss(pred, target):
                 return 1 - ssim(pred, target, data_range=1.0, size_average=True)
             return ssim_loss
+        elif name == "psnr":
+            def psnr_loss(pred, target):
+                mse = nn.MSELoss()(pred, target)
+                psnr = 10 * torch.log10(1 / mse)
+                return -psnr  # queremos minimizar la pérdida
+            return psnr_loss
 
         elif name == "combined":
             if ssim is None:
@@ -146,22 +152,48 @@ def trainer(
     }
     return history
 
-"""
-from utils.trainer import trainer   # o como lo importes
 
-history_unet_l1 = trainer(
-    model,
-    train_loader,
-    val_loader,
-    epochs=20,
-    lr=1e-3,
-    criterion="l1",
-    save_path="pesos_entrenados",
-    save_name="unet_l1.pt"
-)
+def train_model(model, train_loader, val_loader, save_name, criterion="l1"):
+    save_path = "pesos_entrenados"
+    model_path = Path(save_path) / save_name
 
-# Opcional: guardar la historia para cargarla después sin re-entrenar
-import torch
-torch.save(history_unet_l1, "loss_vs_epoch/history_unet_l1.pt")
+    # ruta donde guardamos la history (la carpeta ya existe)
+    history_path = Path("loss_vs_epoch") / f"{save_name}_history.pt"
 
-"""
+    train = False  # Cambia a True para forzar el reentrenamiento
+
+    # Verificar si ya existe un modelo entrenado
+    if model_path.exists() and not train:
+        print(f"✅Modelo ya entrenado encontrado en '{model_path}'.")
+        print("No se vuelve a entrenar para evitar sobreescritura.")
+
+        # si ya tenés la history guardada, la devolvemos
+        if history_path.exists():
+            print(f"📈History encontrada en '{history_path}'.")
+            history = torch.load(history_path, map_location="cpu")
+            return history
+        else:
+            print("⚠️No se encontró history guardada para este modelo.")
+            return None
+
+    else:
+        print("🚀No se encontró modelo entrenado, iniciando entrenamiento...")
+
+        # trainer devuelve la history
+        history = trainer(
+            model,
+            train_loader,
+            val_loader,
+            epochs=10,
+            save_path=save_path,
+            save_name=save_name,
+            criterion=criterion,
+        )
+
+        print(f"💾Modelo guardado en: {model_path}")
+
+        # guardamos la history en loss_vs_epoch
+        torch.save(history, history_path)
+        print(f"📈History guardada en: {history_path}")
+
+        return history
