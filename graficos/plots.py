@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_ab_distribution(real_ab, pred_ab_viejo, pred_ab_nuevo):
+def plot_ab_distribution(real_ab, pred_ab_viejo, pred_ab_nuevo, pred_ab_hist):
     # Tomamos 2000 píxeles al azar para que el gráfico sea rápido y legible
     if len(real_ab.flatten()) > 0:
         idx = np.random.choice(real_ab.shape[0], min(2000, real_ab.shape[0]), replace=False)
@@ -17,9 +17,10 @@ def plot_ab_distribution(real_ab, pred_ab_viejo, pred_ab_nuevo):
     limit = 1.1 
     
     datasets = [
-        (real_ab, 'green', 'Ground Truth (Realidad)'),
-        (pred_ab_viejo, 'red', 'Modelo Base (UNet Simple)'),
-        (pred_ab_nuevo, 'blue', 'Modelo Final (ResNet34 + Stats)')
+        (real_ab, 'green', 'Ground Truth'),
+        (pred_ab_viejo, 'red', 'UNet Simple'),
+        (pred_ab_nuevo, 'blue', 'UNet-ResNet34'),
+        (pred_ab_hist, 'purple', 'Modelo Histograma (UNet-ResNet34)')
     ]
 
     for i, (data, color, title) in enumerate(datasets):
@@ -107,9 +108,10 @@ def plot_saturation_hist(loader, models_list, labels_list, device):
     plt.show()
 
 # --- 2. Función para Extraer los Datos ---
-def get_data_for_plot(loader, model_viejo, model_nuevo, device):
+def get_data_for_plot(loader, model_viejo, model_nuevo, model_hist, device):
     model_viejo.eval()
     model_nuevo.eval()
+    model_hist.eval()
     
     # Sacamos UN SOLO batch del val_loader (suficiente para el gráfico)
     L, ab_real = next(iter(loader))
@@ -122,11 +124,15 @@ def get_data_for_plot(loader, model_viejo, model_nuevo, device):
         # Predicción Modelo Nuevo
         pred_nuevo = model_nuevo(L)
 
+        # Predicción Modelo Histograma
+        pred_hist = model_hist(L)
+
     # Convertimos a Numpy y ordenamos los canales
     # Salida shape: (N_pixeles, 2)
     # .permute(0, 2, 3, 1) cambia de (B, C, H, W) a (B, H, W, C)
     real_numpy = ab_real.permute(0, 2, 3, 1).reshape(-1, 2).cpu().numpy()
     viejo_numpy = pred_viejo.permute(0, 2, 3, 1).reshape(-1, 2).cpu().numpy()
     nuevo_numpy = pred_nuevo.permute(0, 2, 3, 1).reshape(-1, 2).cpu().numpy()
+    hist_numpy = pred_hist.permute(0, 2, 3, 1).reshape(-1, 2).cpu().numpy()
     
-    return real_numpy, viejo_numpy, nuevo_numpy
+    return real_numpy, viejo_numpy, nuevo_numpy, hist_numpy
