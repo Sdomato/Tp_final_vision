@@ -11,7 +11,6 @@ class ImagewoofColorizationDataset(Dataset):
     def __init__(self, root_dir, img_size=224, split="train"):
         self.root_dir = Path(root_dir) / split
 
-        # Buscar imágenes con varias extensiones posibles
         self.img_paths = []
         self.img_paths += list(self.root_dir.rglob("*.JPEG"))
 

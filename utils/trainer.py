@@ -62,7 +62,7 @@ def trainer(
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     
-    # Obtenemos la función de pérdida
+    #  función de pérdida
     criterion_fn = get_criterion_by_name(criterion, device)
     
     # Optimizador
@@ -134,7 +134,6 @@ def trainer(
             best_val_loss = val_loss
             history["best_val_loss"] = best_val_loss
             torch.save(model.state_dict(), Path(save_path) / save_name)
-            # print(f"   ✅ Checkpoint guardado.") 
 
     print("=" * 60)
     print(f"🏁 Entrenamiento finalizado. Mejor Val Loss: {best_val_loss:.4f}")
@@ -152,7 +151,6 @@ def train_model(model, train_loader, val_loader, save_name, criterion="l1", forc
     model_file = save_path / save_name
     history_file = history_path / f"{save_name}_history.pt"
 
-    # Asegurar que existan carpetas
     save_path.mkdir(exist_ok=True)
     history_path.mkdir(exist_ok=True)
 
