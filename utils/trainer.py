@@ -5,7 +5,6 @@ from tqdm import tqdm
 from pathlib import Path
 from pytorch_msssim import ssim
 from utils.histogram_loss import ColorStatsLoss
-from utils.vgg_loss import FinalColorizationLoss
 
 def get_criterion_by_name(name, device):
     """Factory para obtener la función de pérdida."""
@@ -38,11 +37,6 @@ def get_criterion_by_name(name, device):
         def hist_loss_fn(pred, target):
             return 0.8 * l1_loss(pred, target) + 0.2 * stats_loss(pred, target)
         return hist_loss_fn
-
-    elif name == "perceptual" or name == "vgg":
-        if FinalColorizationLoss is None: raise ImportError("FinalColorizationLoss no definida.")
-        return FinalColorizationLoss().to(device)
-
     else:
         raise ValueError(f"❌ Criterio '{name}' no reconocido.")
 
@@ -93,11 +87,7 @@ def trainer(
 
             with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
                 out = model(L)
-                
-                if isinstance(criterion_fn, (FinalColorizationLoss)): 
-                    loss = criterion_fn(out, ab, L)
-                else:
-                    loss = criterion_fn(out, ab)
+                loss = criterion_fn(out, ab)
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -116,16 +106,13 @@ def trainer(
                 L, ab = L.to(device, non_blocking=True), ab.to(device, non_blocking=True)
                 out = model(L)
                 
-                if isinstance(criterion_fn, (FinalColorizationLoss)):
-                    val_loss += criterion_fn(out, ab, L).item()
-                else:
-                    val_loss += criterion_fn(out, ab).item()
+                val_loss += criterion_fn(out, ab).item()
 
         val_loss /= len(val_loader)
         
         print(f"   Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
-        # Guardar historial
+        
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_loss)
 
@@ -154,7 +141,6 @@ def train_model(model, train_loader, val_loader, save_name, criterion="l1", forc
     save_path.mkdir(exist_ok=True)
     history_path.mkdir(exist_ok=True)
 
-    # 1. Chequeo si ya existe
     if model_file.exists() and not force_train:
         print(f"✅ Modelo encontrado en '{model_file}'.")
         print("⏭️ Saltando entrenamiento (usa force_train=True para reentrenar).")
@@ -166,7 +152,6 @@ def train_model(model, train_loader, val_loader, save_name, criterion="l1", forc
             print("⚠️ Historial no encontrado.")
             return None
 
-    # 2. Entrenar si no existe o si forzamos
     else:
         if force_train:
             print(f"🔄 Forzando re-entrenamiento de '{save_name}'...")
@@ -182,8 +167,6 @@ def train_model(model, train_loader, val_loader, save_name, criterion="l1", forc
             save_name=save_name,
             criterion=criterion,
         )
-
-        # Guardar historial para graficar después
         torch.save(history, history_file)
         print(f"📈 Historial guardado en '{history_file}'")
 
